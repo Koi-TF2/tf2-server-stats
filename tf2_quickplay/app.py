@@ -119,6 +119,8 @@ COMMUNITY_TAG_TO_OFFICIAL = {
     "flag": "ctf",
 }
 
+REMOVE_TAGS = {"nodmgspread", "no-random-crits", "crits", "truequickplay", "quickplay"}
+
 DEFAULT_GAMEMODES = set(
     [
         "attack_defense",
@@ -823,17 +825,18 @@ def score_server(humans: int, max_players: int) -> float:
         # score within the real bounds of the server, so we still give a bonus but less than our ideal 24 player match
         return lerp(max_players, real_max_players, score_fuller, score_full, new_humans)
 
+
 async def is_valid_image_url(url: str, session: aiohttp.ClientSession) -> bool:
     if not url:
         return False
-        
+
     try:
         async with session.get(url) as resp:
             resp.raise_for_status()
-                
+
             # Read the bytes into memory
             image_bytes = await resp.read()
-            
+
             # Use Pillow to verify the image structure
             try:
                 img = PIL.Image.open(io.BytesIO(image_bytes))
@@ -1048,7 +1051,9 @@ async def query_runner(
                                         updated_thumbnails = True
                                     leveloverview = body.get("leveloverview")
                                     if leveloverview:
-                                        if await is_valid_image_url(leveloverview["image"]):
+                                        if await is_valid_image_url(
+                                            leveloverview["image"]
+                                        ):
                                             MAP_OVERVIEWS[name] = {
                                                 "image": leveloverview["image"],
                                                 "screen": leveloverview["context"][0],
@@ -1066,7 +1071,9 @@ async def query_runner(
                                 MAP_THUMBNAILS[name] = None
                                 updated_thumbnails = True
                             leveloverview = MAP_OVERVIEWS.get(name)
-                            if leveloverview and not await is_valid_image_url(leveloverview["image"]):
+                            if leveloverview and not await is_valid_image_url(
+                                leveloverview["image"]
+                            ):
                                 MAP_OVERVIEWS[name] = None
                                 updated_thumbnails = True
 
@@ -1399,6 +1406,7 @@ async def query_runner(
                     if not gametype:
                         return None
                     gametype = set(gametype.lower().split(","))
+                    gametype -= REMOVE_TAGS
                     for tag_exc in rules.get("tags_exc", []):
                         gametype.discard(tag_exc)
                     if "rtd" not in gametype:
