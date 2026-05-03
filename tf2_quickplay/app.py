@@ -1150,6 +1150,7 @@ async def query_runner(
                         else:
                             return None
                     quickplay_bonus = 6
+                    classic = True
                     # check for steam ID
                     steamid = server["steamid"]
                     if steamid[0] == "9":
@@ -1173,6 +1174,7 @@ async def query_runner(
                                 return None
                         else:
                             quickplay_bonus -= 0.1
+                            classic = False
 
                     if not updated_servers:
                         ip, port = addr.split(":")
@@ -1396,7 +1398,10 @@ async def query_runner(
                         rules = rules_groups[rules_group]
                     rule_flags = set(rules.get("flags", []))
 
-                    quickplay_bonus += rules.get("score_adj", 0)
+                    score_adj = rules.get("score_adj", 0)
+                    quickplay_bonus += score_adj
+                    if score_adj < 0:
+                        classic = False
 
                     # normalize name
                     name = server["name"]
@@ -1637,7 +1642,7 @@ async def query_runner(
                     rep = get_value(steamid, table=rep_table)
                     if rep is None:
                         rep = 0
-                    score = rep + quickplay_bonus
+                    score = rep
                     score += score_server(num_players, max_players)
                     if updated_servers:
                         try:
@@ -1682,7 +1687,10 @@ async def query_runner(
                             else:
                                 return None
                         else:
-                            score -= 0.1
+                            quickplay_bonus -= 0.1
+                            classic = False
+                    score += quickplay_bonus
+                    adj = 0
                     # the lowest player count in the past hour
                     prev_player_count = player_count_history.get(steamid, None)
                     if prev_player_count is not None:
@@ -1699,15 +1707,17 @@ async def query_runner(
                                         num_players
                                         >= PLAYER_TREND_COUNT_LOW_POINT_LIMIT
                                     ):
-                                        score += PLAYER_TREND_MAX
+                                        trend = PLAYER_TREND_MAX
                                     else:
-                                        score += lerp(
+                                        trend = lerp(
                                             0,
                                             PLAYER_TREND_COUNT_LOW_POINT_LIMIT,
                                             PLAYER_TREND_MIN,
                                             PLAYER_TREND_MAX,
                                             num_players,
                                         )
+                                    adj += trend
+                                    score += trend
                     else:
                         player_count_history[steamid] = num_players
                     # shift the scores around a little bit so we get some variance in sorting
@@ -1716,6 +1726,7 @@ async def query_runner(
                         if shuffle_score is None:
                             shuffle_score = shuffle(score, pct=0.0005) - score
                             shuffle_score_history[steamid] = shuffle_score
+                        adj += shuffle_score
                         score += shuffle_score
                     elif shuffle_score is not None:
                         del shuffle_score_history[steamid]
@@ -1747,6 +1758,7 @@ async def query_runner(
                         asnn = str(asn.network)
                         if asnn in anycast_ips:
                             score -= 0.1
+                            adj -= 0.1
                     except geoip2.errors.AddressNotFoundError:
                         if DEBUG:
                             print(f"{ip} not in ASN database, passing")
@@ -1757,6 +1769,7 @@ async def query_runner(
                     # strip attention seeking characters
                     if name.startswith("\u0001"):
                         score -= 0.1
+                        adj -= 0.1
                     name = (
                         name.replace("\u0001", "")
                         .replace("\t", "")
@@ -1778,6 +1791,8 @@ async def query_runner(
                         "map": map,
                         "gametype": list(gametype),
                         "score": score,
+                        "adj": adj,
+                        "classic": classic,
                         "point": [lon, lat],
                         "ping": overhead,
                     }
